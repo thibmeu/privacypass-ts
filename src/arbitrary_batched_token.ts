@@ -1,17 +1,10 @@
-import { TOKEN_TYPES, TokenChallenge, tokenRequestToTokenTypeEntry } from './index.js';
-import {
-    Client as Type1Client,
-    Issuer as Type1Issuer,
-    TokenRequest as Type1TokenRequest,
-    TokenResponse as Type1TokenResponse,
-} from './priv_verif_token.js';
-import {
-    Client as Type2Client,
-    Issuer as Type2Issuer,
-    TokenRequest as Type2TokenRequest,
-    TokenResponse as Type2TokenResponse,
-} from './pub_verif_token.js';
-import { joinAll } from './util';
+// Copyright (c) 2025 Cloudflare, Inc.
+// Licensed under the Apache-2.0 license found in the LICENSE file or at https://opensource.org/licenses/Apache-2.0
+
+import { Token, TOKEN_TYPES, tokenRequestToTokenTypeEntry } from './index.js';
+import { Issuer as Type1Issuer, TokenRequest as Type1TokenRequest } from './priv_verif_token.js';
+import { Issuer as Type2Issuer, TokenRequest as Type2TokenRequest } from './pub_verif_token.js';
+import { joinAll } from './util.js';
 
 export class TokenRequest {
     // struct {
@@ -235,27 +228,39 @@ export class Issuer {
         }
     }
 
+    private async issuer(
+        tokenType: number,
+        truncatedTokenKeyId: number,
+    ): Promise<Type1Issuer | Type2Issuer> {
+        if (![TOKEN_TYPES.VOPRF.value, TOKEN_TYPES.BLIND_RSA.value].includes(tokenType)) {
+            throw new Error('unsupported token type');
+        }
+        const issuers = this.issuers[tokenType as 1 | 2];
+        for (const issuer of issuers) {
+            // "truncated_token_key_id" is the least significant byte of the
+            // token_key_id in network byte order (in other words, the
+            // last 8 bits of token_key_id).
+            const tokenKeyId = await issuer.tokenKeyID();
+            const truncated = tokenKeyId[tokenKeyId.length - 1];
+            if (truncated == truncatedTokenKeyId) {
+                return issuer;
+            }
+        }
+        throw new Error('no issuer found provided the truncated token key id');
+    }
+
     async issue(tokenRequests: BatchedTokenRequest): Promise<BatchedTokenResponse> {
         const tokenResponses: OptionalTokenResponse[] = [];
         for (const tokenRequest of tokenRequests) {
-            const issuers = this.issuers[tokenRequest.tokenType as 1 | 2];
-            let issuer: undefined | Type1Issuer | Type2Issuer = undefined;
-            for (const candidateIssuer of issuers) {
-                // "truncated_token_key_id" is the least significant byte of the
-                // token_key_id in network byte order (in other words, the
-                // last 8 bits of token_key_id).
-                const tokenKeyId = await candidateIssuer.tokenKeyID();
-                const truncatedTokenKeyId = tokenKeyId[tokenKeyId.length - 1];
-                if (truncatedTokenKeyId == tokenRequest.truncatedTokenKeyId) {
-                    issuer = candidateIssuer;
-                    break;
-                }
-            }
-            if (issuer === undefined) {
-                tokenResponses.push(new OptionalTokenResponse(null));
-            } else {
+            try {
+                const issuer = await this.issuer(
+                    tokenRequest.tokenType,
+                    tokenRequest.truncatedTokenKeyId,
+                );
                 const response = (await issuer.issue(tokenRequest.tokenRequest)).serialize();
                 tokenResponses.push(new OptionalTokenResponse(response));
+            } catch (_) {
+                tokenResponses.push(new OptionalTokenResponse(null));
             }
         }
 
@@ -267,65 +272,39 @@ export class Issuer {
         return Promise.all(this.issuers[tokenType].map((issuer) => issuer.tokenKeyID()));
     }
 
-    // TODO
-    // verify(token: Token): Promise<boolean> {
-    //     const authInput = token.authInput.serialize();
-    //     return this.vServer.verifyFinalize(authInput, token.authenticator);
-    // }
+    async verify(token: Token): Promise<boolean> {
+        const { tokenType, tokenKeyId } = token.authInput;
+        const truncatedTokenKeyId = tokenKeyId[tokenKeyId.length - 1];
+        const issuer = await this.issuer(tokenType, truncatedTokenKeyId);
+        return issuer.verify(token);
+    }
+
+    [Symbol.iterator](): Iterator<Type1Issuer | Type2Issuer> {
+        let index = 0;
+        const data = [...this.issuers[1], ...this.issuers[2]];
+
+        return {
+            next(): IteratorResult<Type1Issuer | Type2Issuer> {
+                if (index < data.length) {
+                    return { value: data[index++], done: false };
+                } else {
+                    return { value: undefined, done: true };
+                }
+            },
+        };
+    }
 }
 
 export class Client {
-    async createTokenRequests(
-        tokenChallenges: TokenChallenge[],
-        issuerPublicKeys: Uint8Array[],
-    ): Promise<BatchedTokenRequest> {
-        if (tokenChallenges.length != issuerPublicKeys.length) {
-            throw new Error('there should be one issuer public key per token challenges');
+    async createTokenRequest(tokenRequests: TokenRequest[]): Promise<BatchedTokenRequest> {
+        if (tokenRequests.length === 0) {
+            throw new Error('no token request');
         }
 
-        const promiseTokenRequests: Promise<TokenRequest>[] = [];
-        for (const tokenChallenge of tokenChallenges) {
-            switch (tokenChallenge.tokenType) {
-                case TOKEN_TYPES.VOPRF.value:
-                    promiseTokenRequests.push(
-                        new Type1Client()
-                            .createTokenRequest(tokenChallenge, issuerPublicKeys[0])
-                            .then((t) => new TokenRequest(t)),
-                    );
-                    break;
-                case TOKEN_TYPES.BLIND_RSA.value:
-                    promiseTokenRequests.push(
-                        new Type2Client()
-                            .createTokenRequest(tokenChallenge, issuerPublicKeys[0])
-                            .then((t) => new TokenRequest(t)),
-                    );
-                    break;
-            }
-        }
-        const tokenRequests = await Promise.all(promiseTokenRequests);
         return new BatchedTokenRequest(tokenRequests);
     }
 
     deserializeTokenResponse(bytes: Uint8Array): BatchedTokenResponse {
         return BatchedTokenResponse.deserialize(bytes);
     }
-
-    async finalize(tokenResponses: BatchedTokenResponse): Promise<Token[]> {}
-}
-
-export class Origin {
-    constructor(public readonly originInfo?: string[]) {}
-
-    // async verify(token: Token, publicKeyIssuer: CryptoKey): Promise<boolean> {
-    //     return this.suite.verify(publicKeyIssuer, token.authenticator, token.authInput.serialize());
-    // }
-
-    // createTokenChallenge(issuerName: string, redemptionContext: Uint8Array): TokenChallenge {
-    //     return new TokenChallenge(
-    //         this.tokenType.value,
-    //         issuerName,
-    //         redemptionContext,
-    //         this.originInfo,
-    //     );
-    // }
 }
