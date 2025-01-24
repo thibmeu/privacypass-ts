@@ -245,6 +245,10 @@ abstract class PubliclyVerifiableIssuer {
         return new TokenResponse(blindSig);
     }
 
+    async tokenKeyID(): Promise<Uint8Array> {
+        return getTokenKeyID(await getPublicKeyBytes(this.publicKey));
+    }
+
     verify(token: Token): Promise<boolean> {
         return this.suite().verify(
             this.publicKey,

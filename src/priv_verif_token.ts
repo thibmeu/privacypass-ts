@@ -196,6 +196,10 @@ export class Issuer {
         return new TokenResponse(evaluateMsg, evaluateProof);
     }
 
+    tokenKeyID(): Promise<Uint8Array> {
+        return getTokenKeyID(this.publicKey);
+    }
+
     verify(token: Token): Promise<boolean> {
         const authInput = token.authInput.serialize();
         return this.vServer.verifyFinalize(authInput, token.authenticator);
