@@ -2,7 +2,7 @@
 // Licensed under the Apache-2.0 license found in the LICENSE file or at https://opensource.org/licenses/Apache-2.0
 
 import { TokenRequest } from '../src/arbitrary_batched_token.js';
-import { TokenChallenge, arbitraryBatched, publicVerif } from '../src/index.js';
+import { Token, TokenChallenge, arbitraryBatched, publicVerif } from '../src/index.js';
 type BlindRSAMode = publicVerif.BlindRSAMode;
 const { Client, Issuer } = arbitraryBatched;
 
@@ -74,19 +74,27 @@ async function rsaVariant(): Promise<void> {
     //     |                     |<-------- TokenResponse -------+
     //     |                     |                   |           |
     i = 0;
-    let isValid = true;
+    const tokens: (Token | undefined)[] = new Array(tokChls.length);
     for (const res of tokRes) {
         if (res.tokenResponse === null) {
-            isValid = false;
-            break;
+            continue;
         }
         const r = publicVerif.TokenResponse.deserialize(res.tokenResponse);
-        const token = await clients[i].finalize(r);
-        isValid &&= await origins[i].verify(token, issuers[i].publicKey);
+        tokens[i] = await clients[i].finalize(r);
+
         i += 1;
     }
     //     |<-- Request+Token ---+                   |           |
     //     |                     |                   |           |
+    let isValid = true;
+    for (let i = 0; i < tokens.length; i += 1) {
+        const token = tokens[i];
+        if (token === undefined) {
+            isValid = false;
+            break;
+        }
+        isValid &&= await origins[i].verify(token, issuers[i].publicKey);
+    }
 
     console.log('Arbitrary batched tokens');
     console.log(`    Valid token: ${isValid}`);
