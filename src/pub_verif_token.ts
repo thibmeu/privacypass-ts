@@ -9,7 +9,7 @@ import {
     RSAPBSSA,
 } from '@cloudflare/blindrsa-ts';
 
-import { convertRSASSAPSSToEnc, joinAll } from './util.js';
+import { convertEncToRSASSAPSS, convertRSASSAPSSToEnc, joinAll } from './util.js';
 import {
     AuthenticatorInput,
     Extensions,
@@ -246,7 +246,7 @@ abstract class PubliclyVerifiableIssuer {
     }
 
     async tokenKeyID(): Promise<Uint8Array> {
-        return getTokenKeyID(await getPublicKeyBytes(this.publicKey));
+        return getTokenKeyID(convertEncToRSASSAPSS(await getPublicKeyBytes(this.publicKey)));
     }
 
     verify(token: Token): Promise<boolean> {

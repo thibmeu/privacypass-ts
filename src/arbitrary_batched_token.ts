@@ -64,7 +64,7 @@ export class BatchedTokenRequest {
         const length = input.getUint16(offset);
         offset += 2;
 
-        if (length != bytes.length + offset) {
+        if (length + offset !== bytes.length) {
             throw new Error('provided bytes does not match its encoded length');
         }
 
@@ -94,13 +94,12 @@ export class BatchedTokenRequest {
             output.push(b);
             length += 2;
 
-            output.push(tokenRequestSerialized);
+            output.push(tokenRequestSerialized.buffer);
             length += tokenRequestSerialized.length;
         }
 
         const b = new ArrayBuffer(2);
         new DataView(b).setUint16(0, length);
-
         return new Uint8Array(joinAll([b, ...output]));
     }
 
@@ -157,7 +156,7 @@ export class BatchedTokenResponse {
         const length = input.getUint16(offset);
         offset += 2;
 
-        if (length != bytes.length + offset) {
+        if (length + offset !== bytes.length) {
             throw new Error('provided bytes does not match its encoded length');
         }
 

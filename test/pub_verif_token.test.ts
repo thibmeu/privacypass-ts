@@ -22,7 +22,9 @@ import vectors from './test_data/pub_verif_v16.json';
 
 type Vectors = (typeof vectors)[number];
 
-async function keysFromVector(v: Vectors): Promise<[CryptoKeyPair, Uint8Array]> {
+export async function keysFromVector(
+    v: Pick<Vectors, 'pkS' | 'skS'>,
+): Promise<[CryptoKeyPair, Uint8Array]> {
     const hexEncoded = hexToUint8(v.skS);
     const pem = new TextDecoder().decode(hexEncoded);
     const pemHeader = '-----BEGIN PRIVATE KEY-----';
