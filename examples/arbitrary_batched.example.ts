@@ -1,8 +1,10 @@
 // Copyright (c) 2025 Cloudflare, Inc.
 // Licensed under the Apache-2.0 license found in the LICENSE file or at https://opensource.org/licenses/Apache-2.0
 
+/* eslint-disable security/detect-object-injection */
+
 import { TokenRequest } from '../src/arbitrary_batched_token.js';
-import { Token, TokenChallenge, arbitraryBatched, publicVerif } from '../src/index.js';
+import { type Token, type TokenChallenge, arbitraryBatched, publicVerif } from '../src/index.js';
 type BlindRSAMode = publicVerif.BlindRSAMode;
 const { Client, Issuer } = arbitraryBatched;
 
@@ -52,7 +54,7 @@ async function rsaVariant(): Promise<void> {
     // +---+----+            +---+----+         +----+-----+ +---+----+
     //     |                     |                   |           |
     //     |<----- Request ------+                   |           |
-    const tokChls: TokenChallenge[] = new Array(origins.length);
+    const tokChls = new Array<TokenChallenge>(origins.length);
     let i = 0;
     for (const currentIssuer of issuer) {
         const redemptionContext = crypto.getRandomValues(new Uint8Array(32));
@@ -62,19 +64,19 @@ async function rsaVariant(): Promise<void> {
     //     +-- TokenChallenge -->|                   |           |
     //     |                     |<== Attestation ==>|           |
     //     |                     |                   |           |
-    const tokReqs: TokenRequest[] = new Array(tokChls.length);
+    const tokReqs = new Array<TokenRequest>(tokChls.length);
     for (let i = 0; i < tokChls.length; i += 1) {
         const tokReq = await clients[i].createTokenRequest(tokChls[i], pkIssuers[i]);
         tokReqs[i] = new TokenRequest(tokReq);
     }
-    const tokReq = await client.createTokenRequest(tokReqs);
+    const tokReq = client.createTokenRequest(tokReqs);
     //     |                     +--------- TokenRequest ------->|
     //     |                     |                   |           |
     const tokRes = await issuer.issue(tokReq);
     //     |                     |<-------- TokenResponse -------+
     //     |                     |                   |           |
     i = 0;
-    const tokens: (Token | undefined)[] = new Array(tokChls.length);
+    const tokens = new Array<Token | undefined>(tokChls.length);
     for (const res of tokRes) {
         if (res.tokenResponse === null) {
             continue;
@@ -89,11 +91,7 @@ async function rsaVariant(): Promise<void> {
     let isValid = true;
     for (let i = 0; i < tokens.length; i += 1) {
         const token = tokens[i];
-        if (token === undefined) {
-            isValid = false;
-            break;
-        }
-        isValid &&= await origins[i].verify(token, issuers[i].publicKey);
+        isValid &&= token !== undefined && (await origins[i].verify(token, issuers[i].publicKey));
     }
 
     console.log('Arbitrary batched tokens');

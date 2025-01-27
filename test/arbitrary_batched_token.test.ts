@@ -1,6 +1,8 @@
 // Copyright (c) 2023 Cloudflare, Inc.
 // Licensed under the Apache-2.0 license found in the LICENSE file or at https://opensource.org/licenses/Apache-2.0
 
+/* eslint-disable security/detect-object-injection */
+
 import { VOPRFClient } from '@cloudflare/voprf-ts';
 import { jest } from '@jest/globals';
 
@@ -10,11 +12,17 @@ import {
     Issuer,
     TokenRequest,
 } from '../src/arbitrary_batched_token';
-import { TokenChallenge, TOKEN_TYPES, privateVerif, publicVerif, Token } from '../src/index.js';
+import {
+    type Token,
+    TokenChallenge,
+    TOKEN_TYPES,
+    privateVerif,
+    publicVerif,
+} from '../src/index.js';
 const { Client: Type1Client } = privateVerif;
 const { BlindRSAMode, Client: Type2Client } = publicVerif;
 
-import { keysFromVector as type2KeysFromVector } from './pub_verif_token.test.js';
+import { keysFromVector as type2KeysFromVector } from './pub_verif_token.js';
 import { hexToUint8, testSerialize, uint8ToHex } from './util.js';
 
 // https://github.com/cloudflare/pat-go/blob/main/tokens/batched/batched-issuance-test-vectors.json
@@ -26,9 +34,9 @@ describe.each(vectors)('ArbitraryBatched-Vector-%#', (v: Vectors) => {
     const params = [[], [{ supportsRSARAW: true }]];
 
     test.each(params)('ArbitraryBatched-Vector-%#-Issuer-Params-%#', async (...params) => {
-        const tokenRequests: TokenRequest[] = new Array(v.issuance.length);
-        const issuers: (privateVerif.Issuer | publicVerif.Issuer)[] = new Array(v.issuance.length);
-        const clients: (privateVerif.Client | publicVerif.Client)[] = new Array(v.issuance.length);
+        const tokenRequests = new Array<TokenRequest>(v.issuance.length);
+        const issuers = new Array<privateVerif.Issuer | publicVerif.Issuer>(v.issuance.length);
+        const clients = new Array<privateVerif.Client | publicVerif.Client>(v.issuance.length);
         for (let i = 0; i < v.issuance.length; i += 1) {
             const issuance = v.issuance[i];
             const type = Number.parseInt(issuance.type);
@@ -80,8 +88,6 @@ describe.each(vectors)('ArbitraryBatched-Vector-%#', (v: Vectors) => {
                     clients[i] = client;
                     const [{ privateKey, publicKey }, publicKeyEnc] =
                         await type2KeysFromVector(issuance);
-                    expect(privateKey).toBeDefined();
-                    expect(publicKey).toBeDefined();
                     const tokReq = await client.createTokenRequest(tokChl, publicKeyEnc);
                     tokenRequests[i] = new TokenRequest(tokReq);
 
@@ -119,16 +125,20 @@ describe.each(vectors)('ArbitraryBatched-Vector-%#', (v: Vectors) => {
                 case TOKEN_TYPES.VOPRF.value: {
                     const client = clients[i] as privateVerif.Client;
                     const rawTokenResponse = res.tokenResponse;
-                    expect(rawTokenResponse).toBeDefined();
-                    const tokenResponse = privateVerif.TokenResponse.deserialize(rawTokenResponse!);
+                    if (rawTokenResponse === null) {
+                        throw new Error('should not be null');
+                    }
+                    const tokenResponse = privateVerif.TokenResponse.deserialize(rawTokenResponse);
                     token = await client.finalize(tokenResponse);
                     break;
                 }
                 case TOKEN_TYPES.BLIND_RSA.value: {
                     const client = clients[i] as publicVerif.Client;
                     const rawTokenResponse = res.tokenResponse;
-                    expect(rawTokenResponse).not.toBeNull();
-                    const tokenResponse = publicVerif.TokenResponse.deserialize(rawTokenResponse!);
+                    if (rawTokenResponse === null) {
+                        throw new Error('should not be null');
+                    }
+                    const tokenResponse = publicVerif.TokenResponse.deserialize(rawTokenResponse);
                     token = await client.finalize(tokenResponse);
                     break;
                 }

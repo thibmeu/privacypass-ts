@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Cloudflare, Inc.
 // Licensed under the Apache-2.0 license found in the LICENSE file or at https://opensource.org/licenses/Apache-2.0
 
-import { Token, TOKEN_TYPES, tokenRequestToTokenTypeEntry } from './index.js';
+import { type Token, TOKEN_TYPES, tokenRequestToTokenTypeEntry } from './index.js';
 import { Issuer as Type1Issuer, TokenRequest as Type1TokenRequest } from './priv_verif_token.js';
 import { Issuer as Type2Issuer, TokenRequest as Type2TokenRequest } from './pub_verif_token.js';
 import { joinAll } from './util.js';
@@ -258,6 +258,7 @@ export class Issuer {
                 );
                 const response = (await issuer.issue(tokenRequest.tokenRequest)).serialize();
                 tokenResponses.push(new OptionalTokenResponse(response));
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
             } catch (_) {
                 tokenResponses.push(new OptionalTokenResponse(null));
             }
@@ -295,7 +296,7 @@ export class Issuer {
 }
 
 export class Client {
-    async createTokenRequest(tokenRequests: TokenRequest[]): Promise<BatchedTokenRequest> {
+    createTokenRequest(tokenRequests: TokenRequest[]): BatchedTokenRequest {
         if (tokenRequests.length === 0) {
             throw new Error('no token request');
         }
