@@ -1,6 +1,8 @@
 // Copyright (c) 2025 Cloudflare, Inc.
 // Licensed under the Apache-2.0 license found in the LICENSE file or at https://opensource.org/licenses/Apache-2.0
 
+import * as varint from 'quicvarint'
+
 import { type Token, TOKEN_TYPES, tokenRequestToTokenTypeEntry } from './index.js';
 import { Issuer as Type1Issuer, TokenRequest as Type1TokenRequest } from './priv_verif_token.js';
 import { Issuer as Type2Issuer, TokenRequest as Type2TokenRequest } from './pub_verif_token.js';
@@ -52,7 +54,7 @@ export class TokenRequest {
 
 export class BatchedTokenRequest {
     // struct {
-    //     TokenRequest token_requests<0..2^16-1>;
+    //     TokenRequest token_requests<V>;
     // } BatchTokenRequest
 
     constructor(public readonly tokenRequests: TokenRequest[]) {}
@@ -61,8 +63,8 @@ export class BatchedTokenRequest {
         let offset = 0;
         const input = new DataView(bytes.buffer);
 
-        const length = input.getUint16(offset);
-        offset += 2;
+        const { value: length, usize } = varint.read(input, offset);
+        offset += usize;
 
         if (length + offset !== bytes.length) {
             throw new Error('provided bytes does not match its encoded length');
@@ -98,8 +100,7 @@ export class BatchedTokenRequest {
             length += tokenRequestSerialized.length;
         }
 
-        const b = new ArrayBuffer(2);
-        new DataView(b).setUint16(0, length);
+        const b = varint.encode(length);
         return new Uint8Array(joinAll([b, ...output]));
     }
 
@@ -145,7 +146,7 @@ export class OptionalTokenResponse {
 // } BatchTokenResponse
 export class BatchedTokenResponse {
     // struct {
-    //     TokenRequest token_requests<0..2^16-1>;
+    //     TokenRequest token_requests<V>;
     // } BatchTokenRequest
     constructor(public readonly tokenResponses: OptionalTokenResponse[]) {}
 
@@ -153,8 +154,8 @@ export class BatchedTokenResponse {
         let offset = 0;
         const input = new DataView(bytes.buffer);
 
-        const length = input.getUint16(offset);
-        offset += 2;
+        const { value: length, usize } = varint.read(input, offset);
+        offset += usize;
 
         if (length + offset !== bytes.length) {
             throw new Error('provided bytes does not match its encoded length');
@@ -190,9 +191,7 @@ export class BatchedTokenResponse {
             length += tokenResponseSerialized.length;
         }
 
-        const b = new ArrayBuffer(2);
-        new DataView(b).setUint16(0, length);
-
+        const b = varint.encode(length);
         return new Uint8Array(joinAll([b, ...output]));
     }
 
