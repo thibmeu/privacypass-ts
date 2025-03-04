@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Cloudflare, Inc.
 // Licensed under the Apache-2.0 license found in the LICENSE file or at https://opensource.org/licenses/Apache-2.0
 
-import * as varint from 'quicvarint'
+import * as varint from 'quicvarint';
 
 import { type Token, TOKEN_TYPES, tokenRequestToTokenTypeEntry } from './index.js';
 import { Issuer as Type1Issuer, TokenRequest as Type1TokenRequest } from './priv_verif_token.js';
