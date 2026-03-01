@@ -29,7 +29,7 @@
     },
     "scripts": {
         "build": "tsc -b",
-        "test": "tsc -b test && vitest --run",
+        "test": "vitest",
         "lint": "eslint .",
         "format": "prettier './(src|test|bench|examples)/**/*.ts' --write",
         "bench": "tsc -b bench && node ./lib/bench/index.js",

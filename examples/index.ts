@@ -10,6 +10,7 @@ import {
     publicVerifiableWithMetadataTokensPSSZero,
 } from './pub_verif_metadata.example.js';
 import { privateVerifiableTokens } from './priv_verif.example.js';
+import { actCredentialFlow } from './act.example.js';
 
 if (typeof crypto === 'undefined') {
     Object.assign(global, { crypto: webcrypto });
@@ -29,6 +30,7 @@ async function examples() {
     await isOk(publicVerifiableTokensPSSZero);
     await isOk(publicVerifiableWithMetadataTokensPSS);
     await isOk(publicVerifiableWithMetadataTokensPSSZero);
+    await isOk(actCredentialFlow);
 }
 
 examples().catch((e: unknown) => {

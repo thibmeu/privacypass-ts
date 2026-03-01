@@ -10,6 +10,7 @@ import {
     BlindRSAMode,
 } from './pub_verif_token.js';
 import { Client as PrivateVerifClient, VOPRF } from './priv_verif_token.js';
+import { ACT } from './act_token.js';
 import { fetchToken, type PrivacyPassClient } from './issuance.js';
 import { convertEncToRSASSAPSS, convertRSASSAPSSToEnc } from './util.js';
 
@@ -19,11 +20,13 @@ export * from './issuance.js';
 export * as genericBatched from './generic_batched_token.js';
 export * as privateVerif from './priv_verif_token.js';
 export * as publicVerif from './pub_verif_token.js';
+export * as act from './act_token.js';
 
 // Privacy Pass Token Type Registry
 // Supported:
 //  - Token Type VOPRF (P-384, SHA-384)
 //  - Token Type Blind RSA (2048-bit)
+//  - Token Type ACT (Ristretto255)
 //
 // https://datatracker.ietf.org/doc/html/draft-ietf-privacypass-protocol-16#name-token-type-registry-updates
 export const TOKEN_TYPES = {
@@ -33,6 +36,8 @@ export const TOKEN_TYPES = {
     PARTIALLY_BLIND_RSA,
     // Token Type VOPRF (P-384, SHA-384)
     VOPRF,
+    // Token Type ACT (Ristretto255) - draft-schlesinger-privacypass-act
+    ACT,
 } as const;
 
 // The Privacy Pass HTTP Authentication Scheme
@@ -99,12 +104,30 @@ export function tokenEntryToSerializedLength(tokenType: TokenTypeEntry): number 
     }
 }
 
+// Extended token type entry that includes ACT (which uses value outside TokenTypeValue union)
+export type ExtendedTokenTypeEntry = TokenTypeEntry | typeof ACT;
+
+// Type guard to check if a token type is ACT
+export function isACTTokenType(entry: ExtendedTokenTypeEntry): entry is typeof ACT {
+    return entry.value === ACT.value;
+}
+
 export function tokenRequestToTokenTypeEntry(bytes: Uint8Array): TokenTypeEntry {
     // All token requests have a 2-byte value at the beginning of the token describing TokenTypeEntry.
     const input = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 
     const type = input.getUint16(0);
-    const tokenType = Object.values(TOKEN_TYPES).find((t) => t.value === type);
+
+    // ACT is handled separately due to different TokenTypeValue type
+    if (type === ACT.value) {
+        throw new Error(
+            `ACT token type (0x${ACT.value.toString(16)}) detected. Use act.ACTTokenRequest.deserialize() instead.`,
+        );
+    }
+
+    const tokenType = Object.values(TOKEN_TYPES).find(
+        (t): t is TokenTypeEntry => t.value !== ACT.value && t.value === type,
+    );
 
     if (tokenType === undefined) {
         throw new Error(`unrecognized or non-supported token type: ${type}`);
