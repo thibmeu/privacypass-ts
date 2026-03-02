@@ -51,6 +51,7 @@ import {
 } from 'act-ts/vnext';
 
 import { sha256 } from '@noble/hashes/sha2';
+import { equalBytes } from '@noble/curves/utils.js';
 import { joinAll } from './util.js';
 import { TokenChallenge, type TokenTypeEntry } from './auth_scheme/private_token.js';
 import type { PrivacyPassClient } from './issuance.js';
@@ -77,6 +78,13 @@ export const ACT: Readonly<Omit<TokenTypeEntry, 'value'> & { value: number }> = 
 // Error Classes
 // =============================================================================
 
+export class DeserializationError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'DeserializationError';
+    }
+}
+
 export class ACTError extends Error {
     constructor(
         message: string,
@@ -95,11 +103,8 @@ export class NoCredentialError extends ACTError {
 }
 
 export class InsufficientBalanceError extends ACTError {
-    constructor(
-        public readonly available: bigint,
-        public readonly requested: bigint,
-    ) {
-        super(`insufficient balance: have ${available}, need ${requested}`, 'INSUFFICIENT_BALANCE');
+    constructor() {
+        super('insufficient balance', 'INSUFFICIENT_BALANCE');
         this.name = 'InsufficientBalanceError';
     }
 }
@@ -149,42 +154,43 @@ export class ACTTokenChallenge extends TokenChallenge {
     }
 
     static override deserialize(bytes: Uint8Array): ACTTokenChallenge {
-        const input = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
         let offset = 0;
 
-        const type = input.getUint16(offset);
+        const type = view.getUint16(offset);
         offset += 2;
-
         if (type !== ACT.value) {
-            throw new Error(`invalid token type: expected ${ACT.value}, got ${type}`);
+            throw new DeserializationError(`invalid token type: expected ${ACT.value}, got ${type}`);
         }
 
         // issuer_name
-        let len = input.getUint16(offset);
+        let len = view.getUint16(offset);
         offset += 2;
-        const issuerNameBytes = bytes.subarray(offset, offset + len);
+        ensureLength(bytes, offset, len);
+        const issuerName = new TextDecoder().decode(bytes.subarray(offset, offset + len));
         offset += len;
-        const issuerName = new TextDecoder().decode(issuerNameBytes);
 
         // redemption_context
-        len = input.getUint8(offset);
+        len = view.getUint8(offset);
         offset += 1;
+        ensureLength(bytes, offset, len);
         const redemptionContext = bytes.subarray(offset, offset + len);
         offset += len;
 
         // origin_info
-        len = input.getUint16(offset);
+        len = view.getUint16(offset);
         offset += 2;
+        ensureLength(bytes, offset, len);
         let originInfo: string[] | undefined;
         if (len > 0) {
-            const originInfoBytes = bytes.subarray(offset, offset + len);
-            originInfo = new TextDecoder().decode(originInfoBytes).split(',');
+            originInfo = new TextDecoder().decode(bytes.subarray(offset, offset + len)).split(',');
         }
         offset += len;
 
         // credential_context (ACT extension)
-        len = input.getUint8(offset);
+        len = view.getUint8(offset);
         offset += 1;
+        ensureLength(bytes, offset, len);
         const credentialContext = bytes.subarray(offset, offset + len);
 
         return new ACTTokenChallenge(issuerName, redemptionContext, originInfo, credentialContext);
@@ -263,22 +269,21 @@ export class ACTTokenRequest {
     }
 
     static deserialize(bytes: Uint8Array): ACTTokenRequest {
-        const input = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
         let offset = 0;
 
-        const type = input.getUint16(offset);
+        const type = view.getUint16(offset);
         offset += 2;
-
         if (type !== ACT.value) {
-            throw new Error(`invalid token type: expected ${ACT.value}, got ${type}`);
+            throw new DeserializationError(`invalid token type: expected ${ACT.value}, got ${type}`);
         }
 
-        const truncatedTokenKeyId = input.getUint8(offset);
+        const truncatedTokenKeyId = view.getUint8(offset);
         offset += 1;
 
-        const len = input.getUint16(offset);
+        const len = view.getUint16(offset);
         offset += 2;
-
+        ensureLength(bytes, offset, len);
         const encodedRequest = bytes.subarray(offset, offset + len);
 
         return new ACTTokenRequest(truncatedTokenKeyId, encodedRequest);
@@ -319,12 +324,12 @@ export class ACTTokenResponse {
     constructor(public readonly encodedResponse: Uint8Array) {}
 
     static deserialize(bytes: Uint8Array): ACTTokenResponse {
-        const input = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
         let offset = 0;
 
-        const len = input.getUint16(offset);
+        const len = view.getUint16(offset);
         offset += 2;
-
+        ensureLength(bytes, offset, len);
         const encodedResponse = bytes.subarray(offset, offset + len);
 
         return new ACTTokenResponse(encodedResponse);
@@ -374,25 +379,26 @@ export class ACTToken {
     }
 
     static deserialize(bytes: Uint8Array): ACTToken {
-        const input = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
         let offset = 0;
 
-        const type = input.getUint16(offset);
+        const type = view.getUint16(offset);
         offset += 2;
-
         if (type !== ACT.value) {
-            throw new Error(`invalid token type: expected ${ACT.value}, got ${type}`);
+            throw new DeserializationError(`invalid token type: expected ${ACT.value}, got ${type}`);
         }
 
+        ensureLength(bytes, offset, ACTToken.CHALLENGE_DIGEST_LENGTH);
         const challengeDigest = bytes.subarray(offset, offset + ACTToken.CHALLENGE_DIGEST_LENGTH);
         offset += ACTToken.CHALLENGE_DIGEST_LENGTH;
 
+        ensureLength(bytes, offset, ACTToken.ISSUER_KEY_ID_LENGTH);
         const issuerKeyId = bytes.subarray(offset, offset + ACTToken.ISSUER_KEY_ID_LENGTH);
         offset += ACTToken.ISSUER_KEY_ID_LENGTH;
 
-        const len = input.getUint16(offset);
+        const len = view.getUint16(offset);
         offset += 2;
-
+        ensureLength(bytes, offset, len);
         const spendProof = bytes.subarray(offset, offset + len);
 
         return new ACTToken(challengeDigest, issuerKeyId, spendProof);
@@ -467,6 +473,8 @@ interface SerializedCredentialState {
     ctx?: string; // base64
 }
 
+// SECURITY: ACTClientState contains secret key material (k, r scalars) in plaintext.
+// Store encrypted at rest and transmit only over secure channels.
 export interface ACTClientState {
     version: number;
     L: number;
@@ -620,7 +628,7 @@ export class Client implements PrivacyPassClient {
         const { credential, ctx } = state;
 
         if (credential.c < cost) {
-            throw new InsufficientBalanceError(credential.c, cost);
+            throw new InsufficientBalanceError();
         }
 
         const [proof, spendState] = proveSpend(this.params, credential, cost, this.rng);
@@ -708,6 +716,9 @@ export class Client implements PrivacyPassClient {
 
     // -------------------------------------------------------------------------
     // State persistence
+    //
+    // SECURITY: Exported state contains secret scalars (k, r) in plaintext.
+    // Applications must encrypt before storage and use secure channels.
     // -------------------------------------------------------------------------
 
     export(): ACTClientState {
@@ -950,7 +961,7 @@ export class Origin {
      */
     decodeToken(token: ACTToken): { valid: boolean; spendProof?: SpendProof } {
         // Verify issuer key ID matches
-        if (!constantTimeEqual(token.issuerKeyId, this.issuerKeyId)) {
+        if (!equalBytes(token.issuerKeyId, this.issuerKeyId)) {
             return { valid: false };
         }
 
@@ -994,6 +1005,12 @@ function deriveRequestContext(
     return result;
 }
 
+function ensureLength(bytes: Uint8Array, offset: number, len: number): void {
+    if (offset + len > bytes.length) {
+        throw new DeserializationError(`buffer too short: need ${len} bytes at offset ${offset}`);
+    }
+}
+
 function toHex(bytes: Uint8Array): string {
     return Array.from(bytes)
         .map((b) => b.toString(16).padStart(2, '0'))
@@ -1006,15 +1023,4 @@ function toBase64(bytes: Uint8Array): string {
 
 function fromBase64(str: string): Uint8Array {
     return Uint8Array.from(atob(str), (c) => c.charCodeAt(0));
-}
-
-function constantTimeEqual(a: Uint8Array, b: Uint8Array): boolean {
-    if (a.length !== b.length) {
-        return false;
-    }
-    let result = 0;
-    for (let i = 0; i < a.length; i++) {
-        result |= (a[i] ?? 0) ^ (b[i] ?? 0);
-    }
-    return result === 0;
 }

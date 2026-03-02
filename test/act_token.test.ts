@@ -244,12 +244,7 @@ describe('ACT Full Flow', () => {
         const tokResBytes = issuer.issue(tokReq.encodedRequest, 100n, challenge);
 
         // Client finalizes credential
-        const tokRes = ACTTokenResponse.deserialize(
-            new Uint8Array([
-                ...new Uint8Array(new Uint16Array([tokResBytes.length]).buffer),
-                ...tokResBytes,
-            ]),
-        );
+        const tokRes = ACTTokenResponse.deserialize(new ACTTokenResponse(tokResBytes).serialize());
         const credInfo = client.finalizeCredential(tokRes, issuer.publicKey);
 
         expect(credInfo.balance).toBe(100n);
@@ -365,19 +360,13 @@ describe('ACT Error Cases', () => {
         const tokResBytes = issuer.issue(tokReq.encodedRequest, 50n, challenge);
         client.finalizeCredential(new ACTTokenResponse(tokResBytes), issuer.publicKey);
 
-        // Try to spend 100
+        // Try to spend 100 - should throw without leaking balance
         expect(() => client.createSpendToken(challenge, 100n, issuer.keyId)).toThrow(
             InsufficientBalanceError,
         );
-
-        try {
-            client.createSpendToken(challenge, 100n, issuer.keyId);
-        } catch (e) {
-            expect(e).toBeInstanceOf(InsufficientBalanceError);
-            const err = e as InstanceType<typeof InsufficientBalanceError>;
-            expect(err.available).toBe(50n);
-            expect(err.requested).toBe(100n);
-        }
+        expect(() => client.createSpendToken(challenge, 100n, issuer.keyId)).toThrow(
+            'insufficient balance',
+        );
     });
 
     test('CredentialInUseError when spending twice without refund', async () => {
