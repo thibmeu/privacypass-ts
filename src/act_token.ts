@@ -39,6 +39,8 @@ import {
     decodeSpendState,
     encodePublicKey,
     decodePublicKey,
+    encodePrivateKey,
+    decodePrivateKey,
     WebCryptoPRNG,
     type SystemParams,
     type PublicKey,
@@ -1024,3 +1026,20 @@ function toBase64(bytes: Uint8Array): string {
 function fromBase64(str: string): Uint8Array {
     return Uint8Array.from(atob(str), (c) => c.charCodeAt(0));
 }
+
+// =============================================================================
+// Re-exports for issuer key persistence
+// =============================================================================
+
+export {
+    ristretto255,
+    generateParameters,
+    keyGen,
+    encodePublicKey,
+    decodePublicKey,
+    encodePrivateKey,
+    decodePrivateKey,
+    WebCryptoPRNG,
+};
+
+export type { SystemParams, PublicKey, PrivateKey, PRNG };
