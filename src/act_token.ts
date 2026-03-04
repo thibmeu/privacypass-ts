@@ -933,6 +933,7 @@ export class Origin {
         public readonly issuerPk: PublicKey, // Exposed for forwarding to issuer
         public readonly issuerKeyId: Uint8Array,
         public readonly originInfo: string[],
+        public readonly issuerName: string,
     ) {}
 
     static create(
@@ -940,11 +941,12 @@ export class Origin {
         L: number,
         issuerPkBytes: Uint8Array,
         originInfo: string[],
+        issuerName: string,
     ): Origin {
         const params = generateParameters(ristretto255, domainSeparator, L);
         const issuerPk = decodePublicKey(params.group, issuerPkBytes);
         const issuerKeyId = sha256(issuerPkBytes);
-        return new Origin(params, issuerPk, issuerKeyId, originInfo);
+        return new Origin(params, issuerPk, issuerKeyId, originInfo, issuerName);
     }
 
     createChallenge(
@@ -952,8 +954,7 @@ export class Origin {
         redemptionContext?: Uint8Array,
     ): ACTTokenChallenge {
         const ctx = redemptionContext ?? crypto.getRandomValues(new Uint8Array(32));
-        // Note: issuerName would come from configuration in real deployment
-        return new ACTTokenChallenge('issuer.example.com', ctx, this.originInfo, credentialContext);
+        return new ACTTokenChallenge(this.issuerName, ctx, this.originInfo, credentialContext);
     }
 
     /**
@@ -982,7 +983,10 @@ export class Origin {
 // =============================================================================
 
 // Derives request_context per draft-schlesinger-privacypass-act-01 §8.2:
-// request_context = concat(issuer_name, origin_info, credential_context, issuer_key_id)
+// context_input = concat(issuer_name, origin_info, credential_context, issuer_key_id)
+// request_context = HashToScalar(context_input)
+//
+// Per §3, concat() uses length-prefixed concatenation with 2-byte big-endian lengths.
 function deriveRequestContext(
     issuerName: string,
     originInfo: string[] | undefined,
@@ -990,20 +994,42 @@ function deriveRequestContext(
     issuerKeyId: Uint8Array,
 ): Uint8Array {
     const te = new TextEncoder();
-    const parts: Uint8Array[] = [
-        te.encode(issuerName),
-        te.encode(originInfo?.join(',') ?? ''),
-        credentialContext,
-        issuerKeyId,
-    ];
 
-    const totalLength = parts.reduce((sum, p) => sum + p.length, 0);
+    // Each part is prefixed with 2-byte big-endian length per spec §3
+    const issuerBytes = te.encode(issuerName);
+    const originBytes = te.encode(originInfo?.join(',') ?? '');
+
+    // Calculate total length: 4 parts × 2-byte prefix + data
+    const totalLength =
+        2 + issuerBytes.length + 2 + originBytes.length + 2 + credentialContext.length + 2 + issuerKeyId.length;
+
     const result = new Uint8Array(totalLength);
+    const view = new DataView(result.buffer);
     let offset = 0;
-    for (const part of parts) {
-        result.set(part, offset);
-        offset += part.length;
-    }
+
+    // issuer_name with 2-byte length prefix
+    view.setUint16(offset, issuerBytes.length, false); // big-endian
+    offset += 2;
+    result.set(issuerBytes, offset);
+    offset += issuerBytes.length;
+
+    // origin_info with 2-byte length prefix
+    view.setUint16(offset, originBytes.length, false);
+    offset += 2;
+    result.set(originBytes, offset);
+    offset += originBytes.length;
+
+    // credential_context with 2-byte length prefix
+    view.setUint16(offset, credentialContext.length, false);
+    offset += 2;
+    result.set(credentialContext, offset);
+    offset += credentialContext.length;
+
+    // issuer_key_id with 2-byte length prefix
+    view.setUint16(offset, issuerKeyId.length, false);
+    offset += 2;
+    result.set(issuerKeyId, offset);
+
     return result;
 }
 
