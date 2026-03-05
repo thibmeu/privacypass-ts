@@ -23,32 +23,17 @@ import {
     verifySpendProof,
     issueRefund,
     constructRefundToken,
-    encodeIssuanceRequest,
-    decodeIssuanceRequest,
-    encodeIssuanceResponse,
-    decodeIssuanceResponse,
-    encodeSpendProof,
-    decodeSpendProof,
-    encodeRefund,
-    decodeRefund,
-    encodeCreditToken,
-    decodeCreditToken,
-    encodeIssuanceState,
-    decodeIssuanceState,
-    encodeSpendState,
-    decodeSpendState,
-    encodePublicKey,
-    decodePublicKey,
-    encodePrivateKey,
-    decodePrivateKey,
+    IssuanceRequest,
+    IssuanceResponse,
+    SpendProof,
+    Refund,
+    CreditToken,
+    IssuanceState,
+    SpendState,
+    PublicKey,
+    PrivateKey,
     WebCryptoPRNG,
     type SystemParams,
-    type PublicKey,
-    type PrivateKey,
-    type CreditToken,
-    type IssuanceState,
-    type SpendState,
-    type SpendProof,
     type PRNG,
 } from 'act-ts';
 
@@ -563,7 +548,7 @@ export class Client implements PrivacyPassClient {
             issuerKeyId,
         };
 
-        const encodedRequest = encodeIssuanceRequest(request);
+        const encodedRequest = IssuanceRequest.serialize(request);
         const truncatedTokenKeyId = issuerKeyId[issuerKeyId.length - 1] ?? 0;
 
         return Promise.resolve(new ACTTokenRequest(truncatedTokenKeyId, encodedRequest));
@@ -596,7 +581,7 @@ export class Client implements PrivacyPassClient {
         const { state, key, challenge } = this.pendingIssuance;
         this.pendingIssuance = undefined;
 
-        const response = decodeIssuanceResponse(this.params.group, tokRes.encodedResponse);
+        const response = IssuanceResponse.deserialize(this.params.group, tokRes.encodedResponse);
         const credential = verifyIssuance(this.params, issuerPk, response, state);
 
         this.credentials.set(key, {
@@ -647,7 +632,7 @@ export class Client implements PrivacyPassClient {
         const challengeDigest = sha256(tokChl.serialize());
 
         // Encode spend proof
-        const spendProofBytes = encodeSpendProof(this.params.group, proof);
+        const spendProofBytes = SpendProof.serialize(this.params.group, proof);
 
         return new ACTToken(challengeDigest, issuerKeyId, spendProofBytes);
     }
@@ -666,7 +651,7 @@ export class Client implements PrivacyPassClient {
 
         const { spendState, proof, ctx } = state;
 
-        const refund = decodeRefund(this.params.group, refundBytes);
+        const refund = Refund.deserialize(this.params.group, refundBytes);
         const newCredential = constructRefundToken(
             this.params,
             issuerPk,
@@ -731,14 +716,14 @@ export class Client implements PrivacyPassClient {
 
             if (state.status === 'ready') {
                 serialized.credential = toBase64(
-                    encodeCreditToken(this.params.group, state.credential),
+                    CreditToken.serialize(this.params.group, state.credential),
                 );
                 serialized.ctx = toBase64(state.ctx);
             } else if (state.status === 'spent') {
                 serialized.spendState = toBase64(
-                    encodeSpendState(this.params.group, state.spendState),
+                    SpendState.serialize(this.params.group, state.spendState),
                 );
-                serialized.proof = toBase64(encodeSpendProof(this.params.group, state.proof));
+                serialized.proof = toBase64(SpendProof.serialize(this.params.group, state.proof));
                 serialized.ctx = toBase64(state.ctx);
             }
 
@@ -754,7 +739,7 @@ export class Client implements PrivacyPassClient {
 
         if (this.pendingIssuance) {
             result.pendingIssuance = {
-                state: toBase64(encodeIssuanceState(this.pendingIssuance.state)),
+                state: toBase64(IssuanceState.serialize(this.pendingIssuance.state)),
                 key: this.pendingIssuance.key,
                 challenge: toBase64(this.pendingIssuance.challenge.serialize()),
                 issuerKeyId: toBase64(this.pendingIssuance.issuerKeyId),
@@ -778,15 +763,15 @@ export class Client implements PrivacyPassClient {
 
         for (const { key, state } of exported.credentials) {
             if (state.status === 'ready' && state.credential && state.ctx) {
-                const credential = decodeCreditToken(params.group, fromBase64(state.credential));
+                const credential = CreditToken.deserialize(params.group, fromBase64(state.credential));
                 client.credentials.set(key, {
                     status: 'ready',
                     credential,
                     ctx: fromBase64(state.ctx),
                 });
             } else if (state.status === 'spent' && state.spendState && state.proof && state.ctx) {
-                const spendState = decodeSpendState(params.group, fromBase64(state.spendState));
-                const proof = decodeSpendProof(params.group, params.L, fromBase64(state.proof));
+                const spendState = SpendState.deserialize(params.group, fromBase64(state.spendState));
+                const proof = SpendProof.deserialize(params.group, params.L, fromBase64(state.proof));
                 client.credentials.set(key, {
                     status: 'spent',
                     spendState,
@@ -799,7 +784,7 @@ export class Client implements PrivacyPassClient {
         }
 
         if (exported.pendingIssuance) {
-            const issuanceState = decodeIssuanceState(
+            const issuanceState = IssuanceState.deserialize(
                 params.group,
                 fromBase64(exported.pendingIssuance.state),
             );
@@ -870,7 +855,7 @@ export class Issuer {
     }
 
     get publicKeyBytes(): Uint8Array {
-        return encodePublicKey(this.publicKey);
+        return PublicKey.serialize(this.publicKey);
     }
 
     get keyId(): Uint8Array {
@@ -878,7 +863,7 @@ export class Issuer {
     }
 
     issue(requestBytes: Uint8Array, credits: bigint, challenge: ACTTokenChallenge): Uint8Array {
-        const request = decodeIssuanceRequest(this.params.group, requestBytes);
+        const request = IssuanceRequest.deserialize(this.params.group, requestBytes);
 
         // Compute request_context per §8.2:
         // request_context = concat(issuer_name, origin_info, credential_context, issuer_key_id)
@@ -898,15 +883,15 @@ export class Issuer {
             ctx,
             this.rng,
         );
-        // encodeIssuanceResponse expects response with ctx for wire format
-        return encodeIssuanceResponse(this.params.group, { ...response, ctx });
+        // IssuanceResponse.serialize expects response with ctx for wire format
+        return IssuanceResponse.serialize(this.params.group, { ...response, ctx });
     }
 
     verifyAndIssueRefund(
         proofBytes: Uint8Array,
         returnCredits: bigint,
     ): { valid: boolean; refund?: Uint8Array } {
-        const proof = decodeSpendProof(this.params.group, this.params.L, proofBytes);
+        const proof = SpendProof.deserialize(this.params.group, this.params.L, proofBytes);
 
         // verifySpendProof throws on invalid proof
         try {
@@ -918,7 +903,7 @@ export class Issuer {
         const refund = issueRefund(this.params, this.privateKey, proof, returnCredits, this.rng);
         return {
             valid: true,
-            refund: encodeRefund(this.params.group, refund),
+            refund: Refund.serialize(this.params.group, refund),
         };
     }
 }
@@ -944,7 +929,7 @@ export class Origin {
         issuerName: string,
     ): Origin {
         const params = generateParameters(ristretto255, domainSeparator, L);
-        const issuerPk = decodePublicKey(params.group, issuerPkBytes);
+        const issuerPk = PublicKey.deserialize(params.group, issuerPkBytes);
         const issuerKeyId = sha256(issuerPkBytes);
         return new Origin(params, issuerPk, issuerKeyId, originInfo, issuerName);
     }
@@ -970,7 +955,7 @@ export class Origin {
 
         // Decode spend proof (verification requires issuer's private key)
         try {
-            const proof = decodeSpendProof(this.params.group, this.params.L, token.spendProof);
+            const proof = SpendProof.deserialize(this.params.group, this.params.L, token.spendProof);
             return { valid: true, spendProof: proof };
         } catch {
             return { valid: false };
@@ -1061,11 +1046,9 @@ export {
     ristretto255,
     generateParameters,
     keyGen,
-    encodePublicKey,
-    decodePublicKey,
-    encodePrivateKey,
-    decodePrivateKey,
+    PublicKey,
+    PrivateKey,
     WebCryptoPRNG,
 };
 
-export type { SystemParams, PublicKey, PrivateKey, PRNG };
+export type { SystemParams, PRNG };
