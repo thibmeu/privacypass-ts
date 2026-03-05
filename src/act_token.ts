@@ -50,7 +50,7 @@ import {
     type SpendState,
     type SpendProof,
     type PRNG,
-} from 'act-ts/vnext';
+} from 'act-ts';
 
 import { sha256 } from '@noble/hashes/sha2';
 import { equalBytes } from '@noble/curves/utils.js';
