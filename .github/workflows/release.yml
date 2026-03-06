@@ -31,7 +31,12 @@ jobs:
         run: npm run build
 
       - name: Publish to npmjs
-        run: npm publish
+        run: |
+          if [[ "${{ github.ref_name }}" == *"-act"* ]]; then
+            npm publish --tag act
+          else
+            npm publish
+          fi
         env:
           # To create a new token, go to https://www.npmjs.com/settings/<user>/tokens/, generate a "Granular Access Token" scoped to @cloudflare/privacypass-ts, and update NPM_TOKEN GitHub secret
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
