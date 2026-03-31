@@ -35,7 +35,7 @@ import {
     WebCryptoPRNG,
     type SystemParams,
     type PRNG,
-} from 'act-ts';
+} from '@cloudflare-experimental/act-ts';
 
 import { sha256 } from '@noble/hashes/sha2';
 import { equalBytes } from '@noble/curves/utils.js';
