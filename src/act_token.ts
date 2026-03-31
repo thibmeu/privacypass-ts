@@ -38,7 +38,7 @@ import {
 } from '@cloudflare-experimental/act-ts';
 
 import { sha256 } from '@noble/hashes/sha2';
-import { equalBytes } from '@noble/curves/utils.js';
+import { equalBytes } from '@noble/curves/abstract/utils';
 import { joinAll } from './util.js';
 import { TokenChallenge, type TokenTypeEntry } from './auth_scheme/private_token.js';
 import type { PrivacyPassClient } from './issuance.js';
